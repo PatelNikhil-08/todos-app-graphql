@@ -38,15 +38,26 @@ mutation addTodo($text: String!) {
 }
 `;
 
+const DELETE_TODO = gql`
+mutation deleteTodo($id: uuid!) {
+  delete_todos(where: {id: {_eq: $id}}) {
+    returning {
+      done
+      id
+      text
+    }
+  }
+}
+`;
+
 
 
 function App() {
   const [text, setText] = React.useState(); 
   const {data, loading, error} = useQuery(GET_TODOS); 
   const[toggleTodo] =  useMutation(TOGGLE_TODO);
-  const[addTodo] = useMutation(ADD_TODO, {
-    onCompleted: () => setText("")
-  });
+  const[addTodo] = useMutation(ADD_TODO);
+  const [deleteTodo] = useMutation(DELETE_TODO);
 
 
   async function handleToggleTodo({id, done}){
@@ -57,11 +68,27 @@ function App() {
   async function handleAddTodo(event){
     event.preventDefault();
     if(!text.trim()) return;
-      await addTodo({variables: {text: text}})
+      await addTodo({variables: {text: text},
+      refetchQueries: [
+        {query: GET_TODOS}
+      ]})
    
+    setText("");
 
   }
 
+  async function handleDeleteTodo({ id }){
+    await deleteTodo ({ 
+      variables: {id},
+      update: cache => {
+        const prevData = cache.readQuery({ query: GET_TODOS})
+        const newTodos = prevData.todos.filter(todo => todo.id !== id); 
+        cache.writeQuery({ query: GET_TODOS, data: {todos: newTodos}})
+      }
+    
+    });
+
+  }
   if(loading) return <div>loading todos....</div>
   if(error) return <div>Error fetching todos</div>
 
@@ -84,10 +111,10 @@ function App() {
       <div className="flex items-center justify-center flex-column">
         {data.todos.map(todo => (
           <p onDoubleClick={()=>handleToggleTodo(todo)} key={todo.id}>
-            <span  className={`${todo.done && 'strike'}`}>
+            <span className={`${todo.done && 'strike'}`}>
               {todo.text}
             </span>
-            <button>&times;</button>
+            <button onClick={() => handleDeleteTodo(todo) }>&times;</button>
           </p>
         ))}
       </div>
